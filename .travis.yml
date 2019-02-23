@@ -1,0 +1,63 @@
+dist: xenial
+language: python
+matrix:
+  include:
+    - name: italian
+      env: >
+        LANG=ita
+        HUNSPELL_PACKAGE=hunspell-it
+        ASPELL_PACKAGE=aspell-it
+        DICT_PACKAGE=witalian
+        HUNSPELL_LANG=it_IT
+        ASPELL_LANG=it
+        WL_PATH=/usr/share/dict/italian
+
+    - name: english
+      env: >
+        LANG=eng
+        HUNSPELL_PACKAGE=hunspell-en-gb
+        ASPELL_PACKAGE=aspell-en
+        DICT_PACKAGE=wbritish-huge
+        HUNSPELL_LANG=en_GB
+        ASPELL_LANG=en
+        WL_PATH=/usr/share/dict/british-english-huge
+
+python:
+  - '3.6'
+before_install:
+  - >
+    sudo apt-get install hunspell-tools aspell
+    $HUNSPELL_PACKAGE
+    $ASPELL_PACKAGE
+    $DICT_PACKAGE
+  - pip install pipenv
+install:
+  - pipenv install --three
+script:
+  - >
+    ./build.py
+    --wordlist $WL_PATH
+    --aspell $ASPELL_LANG
+    --hunspell $HUNSPELL_LANG
+    --pool-size 2
+    --output wordlist-$LANG.marisa
+deploy:
+  provider: releases
+  api_key:
+    secure: >
+      GuekFIW1gZSXied6IPID6bIMyTSk4KZgE60aVmSzoKcwergKHVoHkMvAZMcWSqM6+5qg\
+      wgR1Uwro8xgT7pcEboAERExb/71xS7SUo3gsEJNp5/ehYGa5VxgnamgrTKjHtiBb2Oy6\
+      5dCBGMN8h55wzd/lr7YKbOAF/vn1H5ATelgq79Zv3EPAvQUFn6IlcST0lQfs93xPE0F3\
+      4iulHuss+bIuO4ImKEwjWoNTj656ffM1dTyug5iryuA2OT+wwJS3xTC7ICswU0iRPOjA\
+      THHHZsYTBaeB6ZH6KDvVpxt0j2NQKtzrKhT5gEdXqeg8a9ZxxPBZAjLEBNbm0tK/6xL+\
+      jsHsntUicsLlw+LxaXv4oxU5G2TUJBZaeehJf1sVWDUcLrOcPavgfWlA3a1/wSuonAuA\
+      nRdx+GBcnbywwljBxu9riUiEqApUnOXTU3/+nNPXJXEyWr5hSzRQmzG1OMBs0gH+/5Zq\
+      K6srWkEZle+ugjg/hUjU4YW0hYXRMQUbwZcB7im6Kyp+eu7ZwCtJV9Ek+/EXd4nyMjBu\
+      8vlbHFoshSf02ryn5CnIwb0SkTZzMzronGmJlYD8XNo/uz7i6HDIY97uKjF/rLmH5CSW\
+      fDfxjrs3Dt3kcUrEDHwURs9/ZIn63QwlQH4rHds7O1tovBziuB7+9MIwpDSyuhrYRbvI\
+      9Z8=
+  file: wordlist-$LANG.marisa
+  skip_cleanup: true
+  draft: true
+  on:
+    repo: aogier/tries

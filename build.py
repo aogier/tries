@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python -u
+#!/usr/bin/env python
 '''
 Created on 23 feb 2019
 
@@ -8,10 +8,11 @@ Created on 23 feb 2019
 import atexit
 from distutils.spawn import find_executable  # pylint: disable=import-error, no-name-in-module
 from glob import glob
-import itertools
-from multiprocessing import Process
+import logging
+from multiprocessing import Process, Queue
 import os
 import re
+from shutil import copyfile
 import shutil
 import subprocess
 import tempfile
@@ -21,17 +22,19 @@ import click
 import marisa_trie
 
 
+STOP = 'KTHXBYE'
 FNULL = open(os.devnull, 'w')
+CLEANED_RECORD = re.compile(br'^([A-Z]*\n?)+$')
+DELIMITERS = re.compile(br"[\.\-']")
+
+logging.basicConfig(
+    format='%(asctime)s %(levelname)s %(message)s')
+
+logger = logging.getLogger('builder')  # pylint: disable=invalid-name
+logger.setLevel(logging.DEBUG)
 
 
 def _validate_aspell(ctx, param, value):  # pylint: disable=unused-argument
-    '''
-    Validate aspell option.
-
-    :param ctx:
-    :param param:
-    :param value:
-    '''
     if value:
         if not find_executable('aspell'):
             raise click.BadParameter(
@@ -61,17 +64,14 @@ def _validate_plainfile(ctx, param, value):  # pylint: disable=unused-argument
     if value:
         click.echo(
             click.style(
-                f'Plain wordlist {value.name} found',
+                f'Plain wordlist {value} found',
                 fg='green'))
     return value
 
 
-def cleanup(workdir):
+def _exit_handler(workdir):
     print(f'Cleaning temp dir {workdir}')
     shutil.rmtree(workdir)
-
-
-BASIC_LINE = re.compile(br'^[A-Z]*$')
 
 
 def _cleanup(line):
@@ -79,78 +79,152 @@ def _cleanup(line):
     line = unicodedata.normalize(
         "NFKD", line).encode("ascii", "ignore")
     line = line.upper()
-    if b"'" in line:
-        parts = line.split(b"'")
-        line = parts[-1]
-    if not BASIC_LINE.match(line):
-        print(f'aiuto {line}')
-    return line
+    line = DELIMITERS.split(line)
+    ret = b'\n'.join(line) if isinstance(line, list) else line
+    if not CLEANED_RECORD.match(ret):
+        logger.warning('Dropping %s', line)
+        return b''
+    return ret + b'\n'
 
 
-def _process(pipeline, encoding):
+def _dedup(in_queue):
 
-    _, temporary_file = tempfile.mkstemp()
+    logger.debug('dedup start!')
 
-    subprocess.check_call(f'{pipeline} > {temporary_file}',
-                          shell=True, stderr=FNULL)
+    for item in iter(in_queue.get, STOP):
 
-    wordlist = tempfile.NamedTemporaryFile(delete=False)
+        entries = set()
+        with open(item, encoding='utf-8') as datafile:
+            for line in datafile:
+                entries.add(line)
 
-    with open(temporary_file, encoding=encoding) as work:
-        for line in work:
-            wordlist.write(f'{_cleanup(line)}\n'.encode('utf-8'))
+        dedup_log_from = f'{os.path.basename(item)} ({os.stat(item).st_size})'
+        os.remove(item)
+        _, temporary_file = tempfile.mkstemp(prefix='dedup-')
+        with open(temporary_file, 'w') as output:
+            for entry in entries:
+                output.write(entry)
+        output.close()
+        del entries
+        logger.debug('dedup: %s -> %s (%s)',
+                     dedup_log_from,
+                     os.path.basename(output.name),
+                     os.stat(output.name).st_size)
 
-    os.remove(temporary_file)
+    logger.debug('dedup exit!')
 
 
-def _process_aspell(aspell_language):
-    print('start aspell')
+def _process(in_queue, out_queue):
+
+    logger.debug('processor started!')
+
+    for item in iter(in_queue.get, STOP):
+
+        _, wordlist_path = tempfile.mkstemp(prefix='clean-')
+
+        with open(item, encoding='utf-8') as work:
+            wordlist = open(wordlist_path, 'wb')
+            for line in work:
+                    # wordlist.write(f'{_cleanup(line)}\n'.encode('utf-8'))
+                wordlist.write(_cleanup(line))
+                if wordlist.tell() > 10000000:
+                    wordlist.close()
+                    logger.debug('rotating output')
+                    out_queue.put(wordlist.name)
+                    _, wordlist_path = tempfile.mkstemp(prefix='clean-')
+                    wordlist = open(wordlist_path, 'wb')
+
+            wordlist.close()
+            logger.debug('send last piece')
+            out_queue.put(wordlist.name)
+
+        os.remove(item)
+
+    logger.debug('processor end!')
+
+
+def _raw_data(out_queue, pipeline=None, source=None):
+
+    chunk_size = '50M'
+
+    _, temporary_file = tempfile.mkstemp(prefix='input-')
+
+    if pipeline:
+        subprocess.check_call(f'{pipeline} | split - {temporary_file} -b {chunk_size}',
+                              shell=True, stderr=FNULL)
+    else:
+        copyfile(source, temporary_file)
+
+    for file in glob(f'{temporary_file}*'):
+        out_queue.put(file)
+
+
+def _process_plainfile(wordlist, out_queue):
+    logger.debug('start plainfile')
+
+    _raw_data(out_queue, source=wordlist)
+
+    logger.debug('done plainfile')
+
+
+def _process_aspell(aspell_language, out_queue):
+    logger.debug('start aspell')
 
     pipeline = (f"aspell -d {aspell_language} dump master |"
                 f"aspell -l {aspell_language} expand |"
                 fr"sed 's/ /\n/g'")
 
-    _process(pipeline, 'utf-8')
+    _raw_data(out_queue, pipeline)
 
-    print(f'aspell done')
+    logger.debug('aspell done')
 
 
-def _process_hunspell(hunspell_language):
-    print('start hunspell')
+def _process_hunspell(hunspell_language, out_queue):
+    logger.debug('start hunspell')
 
     pipeline = (f'unmunch /usr/share/hunspell/{hunspell_language}.dic '
-                f'/usr/share/hunspell/{hunspell_language}.aff')
+                f'/usr/share/hunspell/{hunspell_language}.aff'
+                '| iconv -f iso-8859-15 -t utf-8 -')
 
-    _process(pipeline, 'iso-8859-15')
+    _raw_data(out_queue, pipeline)
 
-    print(f'hunspell done')
+    logger.debug('hunspell done')
 
 
 def _generate(workdir):
-    for file in glob(f'{workdir}/*'):
+    for file in glob(f'{workdir}/dedup-*'):
         with open(file, encoding='utf-8') as datafile:
-            for line in datafile:
-                yield line
+            try:
+                for line in datafile:
+                    yield line.strip()
+            except Exception as err:
+                logger.critical('OH NO, %s', err)
+                raise
 
 
 @click.command()
 @click.option(
     '--wordlist',
     callback=_validate_plainfile,
-    type=click.File(),
-    help='plaintext wordlist path eg. /usr/share/dict/italian',
+    help='plaintext wordlist path eg. /usr/share/dict/italian'
 )
 @click.option(
     '--aspell', 'aspell_language',
     callback=_validate_aspell,
-    help='aspell language eg. it',
+    help='aspell language eg. it'
 )
 @click.option(
     '--hunspell', 'hunspell_language',
     callback=_validate_hunspell,
-    help='hunspell language eg. it_IT',
+    help='hunspell language eg. it_IT'
 )
-def main(wordlist, aspell_language, hunspell_language):
+@click.option(
+    '--pool-size', default=3, help='pool size', show_default=True
+)
+@click.option(
+    '--output', help='output file name'
+)
+def main(wordlist, aspell_language, hunspell_language, pool_size, output):
     '''
     Main command.
 
@@ -163,24 +237,33 @@ def main(wordlist, aspell_language, hunspell_language):
     os.environ['TMPDIR'] = workdir
     tempfile.tempdir = workdir
 
-    atexit.register(cleanup, workdir)
+    atexit.register(_exit_handler, workdir)
 
-    print(f'wl: {wordlist} as: {aspell_language}')
+    dedup_queue = Queue(20)
+    process_queue = Queue(20)
 
-    if wordlist:
-        wordlist_temp = tempfile.NamedTemporaryFile(delete=False)
-        for line in wordlist:
+    Process(target=_dedup, args=(dedup_queue, )).start()
 
-            wordlist_temp.write(_cleanup(line) + b'\n')
-
-        print(f'cane {wordlist_temp.name}')
+    process_pool = []
+    for _ in range(pool_size):
+        process = Process(target=_process, args=(process_queue, dedup_queue))
+        process_pool.append(process)
+        process.start()
 
     pool = []
+
+    if wordlist:
+
+        process = Process(target=_process_plainfile,
+                          args=(wordlist, process_queue))
+
+        pool.append(process)
+        process.start()
 
     if aspell_language:
 
         process = Process(target=_process_aspell,
-                          args=(aspell_language, ))
+                          args=(aspell_language, process_queue))
 
         pool.append(process)
         process.start()
@@ -188,7 +271,7 @@ def main(wordlist, aspell_language, hunspell_language):
     if hunspell_language:
 
         process = Process(target=_process_hunspell,
-                          args=(hunspell_language, ))
+                          args=(hunspell_language, process_queue))
 
         pool.append(process)
         process.start()
@@ -196,12 +279,20 @@ def main(wordlist, aspell_language, hunspell_language):
     for process in pool:
         process.join()
 
-    print('making trie')
+    for _ in range(pool_size):
+        process_queue.put(STOP)
+
+    for process in process_pool:
+        process.join()
+
+    dedup_queue.put(STOP)
+
+    logger.debug('making trie')
     trie = marisa_trie.Trie(_generate(workdir))
 
-    print('saving trie')
-    trie.save('out')
-    print('done')
+    logger.debug('saving trie')
+    trie.save(output)
+    logger.debug('done')
 
 
 if __name__ == '__main__':
