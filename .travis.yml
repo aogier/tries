@@ -58,6 +58,7 @@ deploy:
       9Z8=
   file: wordlist-$LANG.marisa
   skip_cleanup: true
-  draft: true
+  on:
+    tags: true
   on:
     repo: aogier/tries
