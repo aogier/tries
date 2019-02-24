@@ -19,7 +19,7 @@ import tempfile
 import unicodedata
 
 import click
-import marisa_trie
+import marisa_trie  # pylint: disable=import-error
 
 
 STOP = 'KTHXBYE'
@@ -80,9 +80,9 @@ def _cleanup(line):
         "NFKD", line).encode("ascii", "ignore")
     line = line.upper()
     line = DELIMITERS.split(line)
-    ret = b'\n'.join(line) if isinstance(line, list) else line
+    ret = b'\n'.join(line)
     if not CLEANED_RECORD.match(ret):
-        logger.warning('Dropping %s', line)
+        #         logger.warning('Dropping %s', line)
         return b''
     return ret + b'\n'
 
@@ -224,7 +224,7 @@ def _generate(workdir):
 @click.option(
     '--output', help='output file name'
 )
-def main(wordlist, aspell_language, hunspell_language, pool_size, output):
+def main(wordlist: str, aspell_language, hunspell_language, pool_size, output) -> None:
     '''
     Main command.
 
@@ -239,8 +239,8 @@ def main(wordlist, aspell_language, hunspell_language, pool_size, output):
 
     atexit.register(_exit_handler, workdir)
 
-    dedup_queue = Queue(20)
-    process_queue = Queue(20)
+    dedup_queue: Queue = Queue(20)
+    process_queue: Queue = Queue(20)
 
     dedup_process = Process(target=_dedup, args=(dedup_queue, ))
     dedup_process.start()

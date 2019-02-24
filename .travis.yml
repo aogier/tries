@@ -2,9 +2,9 @@ dist: xenial
 language: python
 matrix:
   include:
-    - name: italian
+    - name: lang-it
       env: >
-        LANG=ita
+        LANG=it
         HUNSPELL_PACKAGE=hunspell-it
         ASPELL_PACKAGE=aspell-it
         DICT_PACKAGE=witalian
@@ -12,9 +12,9 @@ matrix:
         ASPELL_LANG=it
         WL_PATH=/usr/share/dict/italian
 
-    - name: english
+    - name: lang-en
       env: >
-        LANG=eng
+        LANG=en
         HUNSPELL_PACKAGE=hunspell-en-gb
         ASPELL_PACKAGE=aspell-en
         DICT_PACKAGE=wbritish-huge
@@ -22,6 +22,28 @@ matrix:
         ASPELL_LANG=en
         WL_PATH=/usr/share/dict/british-english-huge
 
+# XXX: suspended
+#    - name: lang-fr
+#      env: >
+#        LANG=fr
+#        HUNSPELL_PACKAGE=hunspell-fr-comprehensive
+#        ASPELL_PACKAGE=aspell-fr
+#        DICT_PACKAGE=wfrench
+#        HUNSPELL_LANG=fr_FR
+#        ASPELL_LANG=fr
+#        WL_PATH=/usr/share/dict/french
+
+    - name: lang-es
+      env: >
+        LANG=es
+        HUNSPELL_PACKAGE=hunspell-es
+        ASPELL_PACKAGE=aspell-es
+        DICT_PACKAGE=wspanish
+        HUNSPELL_LANG=es_ES
+        ASPELL_LANG=es
+        WL_PATH=/usr/share/dict/spanish
+
+if: branch != master or tag =~ /^v\d+$/
 python:
   - '3.6'
 before_install:
@@ -34,6 +56,9 @@ before_install:
 install:
   - pipenv install --three
 script:
+  - mount
+  - mkdir tmpdir
+  - export TMPDIR=tmpdir
   - >
     ./build.py
     --wordlist $WL_PATH
