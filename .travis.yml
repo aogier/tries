@@ -59,6 +59,5 @@ deploy:
   file: wordlist-$LANG.marisa
   skip_cleanup: true
   on:
-    tags: true
-  on:
     repo: aogier/tries
+    tags: true
