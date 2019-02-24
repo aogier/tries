@@ -242,7 +242,8 @@ def main(wordlist, aspell_language, hunspell_language, pool_size, output):
     dedup_queue = Queue(20)
     process_queue = Queue(20)
 
-    Process(target=_dedup, args=(dedup_queue, )).start()
+    dedup_process = Process(target=_dedup, args=(dedup_queue, ))
+    dedup_process.start()
 
     process_pool = []
     for _ in range(pool_size):
@@ -286,6 +287,8 @@ def main(wordlist, aspell_language, hunspell_language, pool_size, output):
         process.join()
 
     dedup_queue.put(STOP)
+
+    dedup_process.join()
 
     logger.debug('making trie')
     trie = marisa_trie.Trie(_generate(workdir))
