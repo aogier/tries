@@ -12,6 +12,7 @@ mypy = "*"
 marisa-trie = "*"
 click = "*"
 setproctitle = "*"
+scrapy = "*"
 
 [requires]
 python_version = "3.7"
