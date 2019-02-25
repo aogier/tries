@@ -5,21 +5,15 @@ matrix:
     - name: lang-it
       env: >
         LANG=it
-        HUNSPELL_PACKAGE=hunspell-it
-        ASPELL_PACKAGE=aspell-it
-        DICT_PACKAGE=witalian
+        PACKAGES="hunspell-it witalian"
         HUNSPELL_LANG=it_IT
-        ASPELL_LANG=it
         WL_PATH=/usr/share/dict/italian
 
     - name: lang-en
       env: >
         LANG=en
-        HUNSPELL_PACKAGE=hunspell-en-gb
-        ASPELL_PACKAGE=aspell-en
-        DICT_PACKAGE=wbritish-huge
+        PACKAGES="hunspell-en-gb wbritish-huge"
         HUNSPELL_LANG=en_GB
-        ASPELL_LANG=en
         WL_PATH=/usr/share/dict/british-english-huge
 
 # XXX: suspended
@@ -36,33 +30,22 @@ matrix:
     - name: lang-es
       env: >
         LANG=es
-        HUNSPELL_PACKAGE=hunspell-es
-        ASPELL_PACKAGE=aspell-es
-        DICT_PACKAGE=wspanish
+        PACKAGES="hunspell-es wspanish"
         HUNSPELL_LANG=es_ES
-        ASPELL_LANG=es
         WL_PATH=/usr/share/dict/spanish
 
 if: branch != master or tag =~ /^v\d+$/
 python:
   - '3.6'
 before_install:
-  - >
-    sudo apt-get install hunspell-tools aspell
-    $HUNSPELL_PACKAGE
-    $ASPELL_PACKAGE
-    $DICT_PACKAGE
+  - sudo apt-get install hunspell-tools aspell $PACKAGES
   - pip install pipenv
 install:
   - pipenv install --three
 script:
-  - mount
-  - mkdir tmpdir
-  - export TMPDIR=tmpdir
   - >
     ./build.py
     --wordlist $WL_PATH
-    --aspell $ASPELL_LANG
     --hunspell $HUNSPELL_LANG
     --pool-size 2
     --output wordlist-$LANG.marisa
