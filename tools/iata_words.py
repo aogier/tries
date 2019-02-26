@@ -74,11 +74,11 @@ def _iata_codes_callback(ctx, param, value):  # pylint: disable=unused-argument
         client = cloudant.CouchDB(iata_url.username, iata_url.password,
                                   url=f'{scheme}://{iata_url.hostname}:{port}',
                                   connect=True)
-        conn_info = ConnInfo(*[x
+        conn_info = ConnInfo(*(x
                                for x
                                in iata_url.path.split("/")
                                if x
-                               and not x.startswith('_')])
+                               and not x.startswith('_')))
 
         database = client[conn_info.db]
         ddoc = cloudant.design_document.DesignDocument(database, conn_info.dd)
