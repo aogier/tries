@@ -53,8 +53,7 @@ def _dedup(in_queue):
 
         entries = set()
         with open(item, encoding='utf-8') as datafile:
-            for line in datafile:
-                entries.add(line)
+            entries.update((line for line in datafile))
 
         dedup_log_from = f'{os.path.basename(item)} ({os.stat(item).st_size})'
         os.remove(item)
@@ -62,7 +61,6 @@ def _dedup(in_queue):
             for entry in entries:
                 output.write(entry)
         output.close()
-        del entries
         logger.debug('dedup: %s -> %s (%s)',
                      dedup_log_from,
                      os.path.basename(output.name),
