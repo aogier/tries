@@ -25,7 +25,7 @@ class IataSpider(CrawlSpider):
             airport = {}
             airport['iata'] = _x('.//td[1]/text()').extract_first()
             airport['icao'] = _x('.//td[2]/text()').extract_first()
-            airport['name'] = _x('.//td[3]/text()').extract_first()
+            airport['name'] = ''.join(_x('.//td[3]//text()').extract())
             airport['location'] = ''.join(_x('.//td[4]//text()').extract())
             airport['time'] = _x('.//td[5]//text()').extract_first()
             airport['dst'] = _x('.//td[6]//text()').extract_first()
