@@ -38,6 +38,11 @@ def _exit_handler(workdir):
     shutil.rmtree(workdir)
 
 
+def _mktemp(prefix, mode='w'):
+    _, temporary_file = tempfile.mkstemp(prefix=prefix)
+    return open(temporary_file, mode)
+
+
 def _dedup(in_queue):
 
     setproctitle(f'{__ME__} - deduplicator')
@@ -53,8 +58,7 @@ def _dedup(in_queue):
 
         dedup_log_from = f'{os.path.basename(item)} ({os.stat(item).st_size})'
         os.remove(item)
-        _, temporary_file = tempfile.mkstemp(prefix='3-dedup-')
-        with open(temporary_file, 'w') as output:
+        with _mktemp('3-dedup-') as output:
             for entry in entries:
                 output.write(entry)
         output.close()
@@ -75,10 +79,8 @@ def _process(in_queue, out_queue):
 
     for item in iter(in_queue.get, STOP):
 
-        _, wordlist_path = tempfile.mkstemp(prefix='1-clean-')
-
         with open(item, encoding='utf-8') as work:
-            wordlist = open(wordlist_path, 'wb')
+            wordlist = _mktemp('1-clean-', 'wb')
             for line in work:
 
                 line = line.strip()
@@ -97,8 +99,7 @@ def _process(in_queue, out_queue):
                     logger.debug('rotating output')
                     out_queue.put(wordlist.name)
 
-                    _, wordlist_path = tempfile.mkstemp(prefix='1-clean-')
-                    wordlist = open(wordlist_path, 'wb')
+                    wordlist = _mktemp('1-clean-', 'wb')
 
             if wordlist.tell() > 0:
                 wordlist.close()
