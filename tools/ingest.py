@@ -4,26 +4,26 @@ Created on 26 feb 2019
 
 @author: Alessandro Ogier <alessandro.ogier@gmail.com>
 '''
+import cProfile
 import multiprocessing
+import os
 import sys
 
 import click
 import cloudant
 import ijson
-import os
-import cProfile
 
 
 STOP = 'KTHXBYE'
 
 
-def _worker(in_queue, db, when_existing):
+def _worker(in_queue, database, when_existing):
 
     batch = []
     for item in iter(in_queue.get, STOP):
 
         try:
-            doc = db[item['_id']]
+            doc = database[item['_id']]
         except KeyError:
             batch.append(item)
             continue
@@ -45,19 +45,19 @@ def _worker(in_queue, db, when_existing):
         batch.append(doc)
 
         if len(batch) > 100:
-            db.bulk_docs(batch)
+            database.bulk_docs(batch)
             batch = []
 
     if batch:
-        db.bulk_docs(batch)
+        database.bulk_docs(batch)
 
 
-def _profi_worker(in_queue, db, when_existing):
-    cProfile.runctx('_worker(in_queue, db, when_existing)',
+def _profi_worker(in_queue, database, when_existing):  # pylint: disable=unused-argument
+    cProfile.runctx('_worker(in_queue, database, when_existing)',
                     globals(), locals(), 'prof%d.prof' % os.getpid())
 
 
-@click.command()
+@click.command(help='Ingest data into a db')
 @click.option('--couchdb-user', help='couchdb username', required=True)
 @click.option('--couchdb-pass', help='couchdb password', required=True)
 @click.option('--couchdb-url', 'couchdb_url',
@@ -83,10 +83,24 @@ def _profi_worker(in_queue, db, when_existing):
 @click.option('--profile',
               help='profile process (debug only',
               is_flag=True, default=False)
-def main(couchdb_user, couchdb_pass, couchdb_url,
+def main(couchdb_user, couchdb_pass, couchdb_url,  # pylint: disable=too-many-arguments, too-many-locals
          dbname, create_database,
          id_field, when_existing,
          pool_size, single, profile):
+    '''
+    Ingest data into a db
+
+    :param couchdb_user:
+    :param couchdb_pass:
+    :param couchdb_url:
+    :param dbname:
+    :param create_database:
+    :param id_field:
+    :param when_existing:
+    :param pool_size:
+    :param single:
+    :param profile:
+    '''
 
     process_queue = multiprocessing.Queue(50)
 
@@ -95,31 +109,24 @@ def main(couchdb_user, couchdb_pass, couchdb_url,
         client = cloudant.CouchDB(couchdb_user, couchdb_pass,
                                   url=couchdb_url,
                                   connect=True)
+
         if create_database:
-            db = client.create_database(dbname)  # pylint: disable=invalid-name
+            database = client.create_database(dbname)
         else:
             try:
-                db = client[dbname]  # pylint: disable=invalid-name
+                database = client[dbname]
             except KeyError:
                 print(f'database {dbname} not found')
                 sys.exit(1)
 
-        if profile:
-            process = multiprocessing.Process(
-                target=_profi_worker, args=(process_queue, db, when_existing))
-        else:
-            process = multiprocessing.Process(
-                target=_worker, args=(process_queue, db, when_existing))
+        process = multiprocessing.Process(
+            target=_profi_worker if profile else _worker,
+            args=(process_queue, database, when_existing))
 
         process.start()
         process_pool.append(process)
 
-    if single:
-        items = ijson.items(sys.stdin, '')
-    else:
-        items = ijson.items(sys.stdin, 'item')
-
-    for item in items:
+    for item in ijson.items(sys.stdin, '' if single else 'item'):
 
         if id_field:
             if not item[id_field]:
