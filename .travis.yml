@@ -50,7 +50,7 @@ script:
     /usr/share/hunspell/$HUNSPELL_LANG.dic
     /usr/share/hunspell/$HUNSPELL_LANG.aff
     2>/dev/null | iconv -f iso-8859-15 -t utf-8 -
-    ) | ./build.py
+    ) | tools/build.py
     --pool-size 2
     --output wordlist-$LANG.marisa
   - ls -las
