@@ -13,6 +13,8 @@ marisa-trie = "*"
 click = "*"
 setproctitle = "*"
 scrapy = "*"
+cloudant = "*"
+ijson = "*"
 
 [requires]
 python_version = "3.7"
