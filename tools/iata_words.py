@@ -100,7 +100,7 @@ def _min_size_callback(ctx, param, value):  # pylint: disable=unused-argument
 
 
 def _max_size_callback(ctx, param, value):  # pylint: disable=unused-argument
-    if value % 3 != 0:
+    if value != float('inf') and value % 3 != 0:
         value = value - value % 3
         print(f'effective max_size will be {value}')
 
