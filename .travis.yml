@@ -1,3 +1,4 @@
+---
 dist: xenial
 language: python
 matrix:
@@ -16,6 +17,13 @@ matrix:
         HUNSPELL_LANG=en_GB
         WL_PATH=/usr/share/dict/british-english-huge
 
+    - name: lang-es
+      env: >
+        LANG=es
+        PACKAGES="hunspell-es wspanish"
+        HUNSPELL_LANG=es_ES
+        WL_PATH=/usr/share/dict/spanish
+
 # XXX: suspended
 #    - name: lang-fr
 #      env: >
@@ -27,13 +35,6 @@ matrix:
 #        ASPELL_LANG=fr
 #        WL_PATH=/usr/share/dict/french
 
-    - name: lang-es
-      env: >
-        LANG=es
-        PACKAGES="hunspell-es wspanish"
-        HUNSPELL_LANG=es_ES
-        WL_PATH=/usr/share/dict/spanish
-
 if: branch != master or tag =~ /^v\d+$/
 python:
   - '3.6'
@@ -44,11 +45,15 @@ install:
   - pipenv install --three
 script:
   - >
-    ./build.py
-    --wordlist $WL_PATH
-    --hunspell $HUNSPELL_LANG
+    ( cat $WL_PATH;
+    unmunch
+    /usr/share/hunspell/$HUNSPELL_LANG.dic
+    /usr/share/hunspell/$HUNSPELL_LANG.aff
+    2>/dev/null | iconv -f iso-8859-15 -t utf-8 -
+    ) | ./build.py
     --pool-size 2
     --output wordlist-$LANG.marisa
+  - ls -las
 deploy:
   provider: releases
   api_key:
